@@ -1,553 +1,650 @@
-class RadiosondeDashboard {
-    constructor() {
-        this.sondes = new Map();
-        this.activeSondes = new Set();
-        this.map = null;
-        this.charts = {};
-        this.colors = [
-            '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57',
-            '#ff9ff3', '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43',
-            '#10ac84', '#ee5253', '#0abde3', '#006ba6', '#f368e0'
-        ];
+// Map configuration
+const mapStyles = {
+    dark: {
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    },
+    light: {
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    },
+    terrain: {
+        url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://openttopomap.org">OpenTopoMap</a>'
+    },
+    satellite: {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+    }
+};
 
-        this.initializeMap();
-        this.setupEventListeners();
-        this.setDefaultDates();
+// Global variables
+let map;
+let flightData = [];
+let mapLayer;
+let altitudeChart, speedChart, velocityChart, directionChart;
+let activeSondes = new Set();
 
-        // Load sample data for demonstration
-        this.loadSampleData();
+// Initialize the application
+function init() {
+    initMap();
+    createCharts();
+    setupEventListeners();
+}
+
+// Initialize map with dark theme
+function initMap() {
+    map = L.map('map').setView([44.4987, 26.1979], 10);
+    setMapStyle('dark');
+
+    // Add scale control
+    L.control.scale({
+        metric: true,
+        imperial: false
+    }).addTo(map);
+}
+
+// Set map style
+function setMapStyle(style) {
+    if (mapLayer) {
+        map.removeLayer(mapLayer);
     }
 
-    initializeMap() {
-        // Initialize map centered on Bucharest
-        this.map = L.map('map').setView([44.4268, 26.1025], 10);
+    mapLayer = L.tileLayer(mapStyles[style].url, {
+        attribution: mapStyles[style].attribution,
+        maxZoom: 18
+    }).addTo(map);
 
-        // Add dark theme tile layer
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© OpenStreetMap contributors © CARTO',
-            subdomains: 'abcd',
-            maxZoom: 19
-        }).addTo(this.map);
-    }
-
-    setupEventListeners() {
-        document.getElementById('fileInput').addEventListener('change', (e) => {
-            this.loadSondeFiles(e.target.files);
-        });
-
-        document.getElementById('timeRange').addEventListener('change', (e) => {
-            this.setQuickTimeRange(e.target.value);
-        });
-
-        document.getElementById('refreshData').addEventListener('click', () => {
-            this.updateVisualization();
-        });
-
-        document.getElementById('exportData').addEventListener('click', () => {
-            this.exportToCSV();
-        });
-
-        document.getElementById('startDate').addEventListener('change', () => {
-            this.updateVisualization();
-        });
-
-        document.getElementById('endDate').addEventListener('change', () => {
-            this.updateVisualization();
-        });
-    }
-
-    setDefaultDates() {
-        const today = new Date();
-        const thirtyDaysAgo = new Date(today.getTime() - (30 * 24 * 60 * 60 * 1000));
-
-        document.getElementById('endDate').value = today.toISOString().split('T')[0];
-        document.getElementById('startDate').value = thirtyDaysAgo.toISOString().split('T')[0];
-    }
-
-    setQuickTimeRange(days) {
-        const endDate = new Date();
-        const startDate = new Date();
-
-        if (days !== 'all') {
-            startDate.setDate(endDate.getDate() - parseInt(days));
-            document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+    // Update active button state
+    document.querySelectorAll('.map-style-btn').forEach(btn => {
+        if (btn.dataset.style === style) {
+            btn.classList.add('active');
         } else {
-            document.getElementById('startDate').value = '';
+            btn.classList.remove('active');
         }
+    });
+}
 
-        document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
-        this.updateVisualization();
+// Generate consistent color for each sonde based on its name
+function generateColorFromName(name) {
+    // Simple hash function to generate consistent number from name
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
     }
 
-    async loadSondeFiles(files) {
-        this.showLoading(true);
-        this.sondes.clear();
-        this.activeSondes.clear();
+    // Use the hash to generate HSL values
+    const hue = Math.abs(hash % 360);
+    const saturation = 70 + Math.abs(hash % 30); // 70-100%
+    const lightness = 50 + Math.abs(hash % 20); // 50-70%
 
-        const logFiles = Array.from(files).filter(file => file.name.endsWith('.log'));
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
 
-        for (const file of logFiles) {
-            try {
-                const content = await this.readFile(file);
-                const sondeId = file.name.replace('.log', '');
-                const data = this.parseLogFile(content, sondeId);
-
-                if (data.length > 0) {
-                    this.sondes.set(sondeId, data);
-                    this.activeSondes.add(sondeId);
-                }
-            } catch (error) {
-                console.error(`Error loading ${file.name}:`, error);
-            }
-        }
-
-        this.createSondeList();
-        this.updateVisualization();
-        this.showLoading(false);
-    }
-
-    loadSampleData() {
-        // For demonstration purposes, load the sample data
-        const sampleContent = `2025-09-15 14:16:38 | Lat: 44.48800, Lon: 26.24694, Alt: 4014.2 m, vH: 27.0 km/h, vV: 3.3 m/s, Dir: 120.3
-2025-09-15 14:16:57 | Lat: 44.48762, Lon: 26.24836, Alt: 4090.3 m, vH: 19.4 km/h, vV: 3.9 m/s, Dir: 100.4
-2025-09-15 14:17:11 | Lat: 44.48731, Lon: 26.24938, Alt: 4153.8 m, vH: 29.9 km/h, vV: 4.6 m/s, Dir: 97.8
-2025-09-15 14:17:28 | Lat: 44.48686, Lon: 26.25068, Alt: 4236.3 m, vH: 21.6 km/h, vV: 5.8 m/s, Dir: 110.5
-2025-09-15 14:17:34 | Lat: 44.48662, Lon: 26.25113, Alt: 4262.6 m, vH: 28.8 km/h, vV: 3.5 m/s, Dir: 119.9
-2025-09-15 14:17:39 | Lat: 44.48645, Lon: 26.25159, Alt: 4284.1 m, vH: 25.9 km/h, vV: 3.7 m/s, Dir: 112.7
-2025-09-15 14:17:40 | Lat: 44.48642, Lon: 26.25168, Alt: 4288.8 m, vH: 27.0 km/h, vV: 5.7 m/s, Dir: 116.7
-2025-09-15 14:17:44 | Lat: 44.48629, Lon: 26.25204, Alt: 4308.4 m, vH: 29.9 km/h, vV: 4.3 m/s, Dir: 116.2
-2025-09-15 14:17:45 | Lat: 44.48625, Lon: 26.25213, Alt: 4312.0 m, vH: 30.2 km/h, vV: 2.9 m/s, Dir: 119.8
-2025-09-15 14:17:46 | Lat: 44.48621, Lon: 26.25222, Alt: 4314.9 m, vH: 30.6 km/h, vV: 3.0 m/s, Dir: 120.6
-2025-09-15 14:19:11 | Lat: 44.48467, Lon: 26.26067, Alt: 4601.3 m, vH: 31.3 km/h, vV: 3.8 m/s, Dir: 99.9
-2025-09-15 14:19:18 | Lat: 44.48455, Lon: 26.26140, Alt: 4625.3 m, vH: 32.4 km/h, vV: 2.1 m/s, Dir: 103.3
-2025-09-15 14:19:20 | Lat: 44.48450, Lon: 26.26164, Alt: 4631.2 m, vH: 36.0 km/h, vV: 3.2 m/s, Dir: 104.7
-2025-09-15 14:19:21 | Lat: 44.48448, Lon: 26.26176, Alt: 4634.2 m, vH: 37.4 km/h, vV: 2.8 m/s, Dir: 105.7
-2025-09-15 14:21:45 | Lat: 44.48015, Lon: 26.27641, Alt: 5176.8 m, vH: 44.6 km/h, vV: 4.3 m/s, Dir: 123.9
-2025-09-15 14:21:46 | Lat: 44.48009, Lon: 26.27654, Alt: 5180.7 m, vH: 43.2 km/h, vV: 3.7 m/s, Dir: 121.8
-2025-09-15 14:21:47 | Lat: 44.48004, Lon: 26.27666, Alt: 5184.3 m, vH: 41.4 km/h, vV: 3.4 m/s, Dir: 122.3
-2025-09-15 14:21:48 | Lat: 44.47998, Lon: 26.27678, Alt: 5188.2 m, vH: 40.7 km/h, vV: 4.3 m/s, Dir: 124.5
-2025-09-15 14:21:49 | Lat: 44.47992, Lon: 26.27690, Alt: 5192.0 m, vH: 39.6 km/h, vV: 3.6 m/s, Dir: 128.3
-2025-09-15 14:21:50 | Lat: 44.47986, Lon: 26.27700, Alt: 5195.8 m, vH: 39.6 km/h, vV: 3.9 m/s, Dir: 131.1
-2025-09-15 14:21:51 | Lat: 44.47979, Lon: 26.27711, Alt: 5199.6 m, vH: 41.0 km/h, vV: 3.9 m/s, Dir: 128.7
-2025-09-15 14:22:05 | Lat: 44.47903, Lon: 26.27894, Alt: 5259.0 m, vH: 41.0 km/h, vV: 3.8 m/s, Dir: 115.4
-2025-09-15 14:22:23 | Lat: 44.47817, Lon: 26.28120, Alt: 5355.9 m, vH: 37.4 km/h, vV: 6.3 m/s, Dir: 103.0
-2025-09-15 14:22:28 | Lat: 44.47803, Lon: 26.28183, Alt: 5382.5 m, vH: 37.1 km/h, vV: 3.9 m/s, Dir: 109.8
-2025-09-15 14:22:29 | Lat: 44.47800, Lon: 26.28196, Alt: 5387.4 m, vH: 40.0 km/h, vV: 6.0 m/s, Dir: 111.3
-2025-09-15 14:22:30 | Lat: 44.47796, Lon: 26.28209, Alt: 5392.2 m, vH: 41.0 km/h, vV: 3.7 m/s, Dir: 113.8
-2025-09-15 14:22:31 | Lat: 44.47791, Lon: 26.28222, Alt: 5396.5 m, vH: 40.0 km/h, vV: 4.9 m/s, Dir: 116.4
-2025-09-15 14:22:32 | Lat: 44.47787, Lon: 26.28234, Alt: 5401.8 m, vH: 36.4 km/h, vV: 5.8 m/s, Dir: 114.4
-2025-09-15 14:22:36 | Lat: 44.47776, Lon: 26.28279, Alt: 5423.5 m, vH: 38.2 km/h, vV: 7.0 m/s, Dir: 100.6`;
-
-        const sondeId = "SAMPLE";
-        const data = this.parseLogFile(sampleContent, sondeId);
-
-        if (data.length > 0) {
-            this.sondes.set(sondeId, data);
-            this.activeSondes.add(sondeId);
-            this.createSondeList();
-            this.updateVisualization();
-        }
-    }
-
-    readFile(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.onerror = (e) => reject(e);
-            reader.readAsText(file);
-        });
-    }
-
-    parseLogFile(content, sondeId) {
-        const lines = content.trim().split('\n');
-        const data = [];
-
-        for (const line of lines) {
-            const match = line.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \| Lat: ([-\d.]+), Lon: ([-\d.]+), Alt: ([-\d.]+) m, vH: ([-\d.]+) km\/h, vV: ([-\d.]+) m\/s, Dir: ([-\d.]+)/);
-
-            if (match) {
-                data.push({
-                    sondeId: sondeId,
-                    timestamp: new Date(match[1]),
-                    lat: parseFloat(match[2]),
-                    lon: parseFloat(match[3]),
-                    alt: parseFloat(match[4]),
-                    vH: parseFloat(match[5]),
-                    vV: parseFloat(match[6]),
-                    dir: parseFloat(match[7])
-                });
-            }
-        }
-
-        return data.sort((a, b) => a.timestamp - b.timestamp);
-    }
-
-    createSondeList() {
-        const container = document.getElementById('sondeList');
-        container.innerHTML = '';
-
-        Array.from(this.sondes.keys()).forEach((sondeId, index) => {
-            const color = this.colors[index % this.colors.length];
-            const item = document.createElement('div');
-            item.className = 'sonde-item';
-            item.dataset.sondeId = sondeId;
-
-            item.innerHTML = `
-                <input type="checkbox" class="sonde-checkbox" id="sonde-${sondeId}"
-                       ${this.activeSondes.has(sondeId) ? 'checked' : ''}>
-                <div class="sonde-color" style="background-color: ${color}"></div>
-                <label for="sonde-${sondeId}">${sondeId}</label>
-            `;
-
-            const checkbox = item.querySelector('.sonde-checkbox');
-            checkbox.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    this.activeSondes.add(sondeId);
-                } else {
-                    this.activeSondes.delete(sondeId);
-                }
-                this.updateVisualization();
-            });
-
-            container.appendChild(item);
-        });
-    }
-
-    getFilteredData() {
-        const startDate = document.getElementById('startDate').value;
-        const endDate = document.getElementById('endDate').value;
-
-        const start = startDate ? new Date(startDate) : null;
-        const end = endDate ? new Date(endDate + 'T23:59:59') : null;
-
-        const filteredData = new Map();
-
-        for (const [sondeId, data] of this.sondes.entries()) {
-            if (!this.activeSondes.has(sondeId)) continue;
-
-            const filtered = data.filter(point => {
-                if (start && point.timestamp < start) return false;
-                if (end && point.timestamp > end) return false;
-                return true;
-            });
-
-            if (filtered.length > 0) {
-                filteredData.set(sondeId, filtered);
-            }
-        }
-
-        return filteredData;
-    }
-
-    updateVisualization() {
-        const filteredData = this.getFilteredData();
-        this.updateMap(filteredData);
-        this.updateCharts(filteredData);
-        this.updateStats(filteredData);
-    }
-
-    updateMap(data) {
-        // Clear existing layers except base tile layer
-        this.map.eachLayer((layer) => {
-            if (layer instanceof L.Polyline || layer instanceof L.Marker) {
-                this.map.removeLayer(layer);
-            }
-        });
-
-        const bounds = [];
-
-        Array.from(data.entries()).forEach(([sondeId, points], index) => {
-            const color = this.colors[index % this.colors.length];
-            const coords = points.map(p => [p.lat, p.lon]);
-            bounds.push(...coords);
-
-            // Draw trajectory
-            const trajectory = L.polyline(coords, {
-                color: color,
-                weight: 3,
-                opacity: 0.8
-            }).addTo(this.map);
-
-            trajectory.bindPopup(`<b>${sondeId}</b><br>Points: ${points.length}`);
-
-            // Add start marker
-            if (points.length > 0) {
-                const start = points[0];
-                L.marker([start.lat, start.lon], {
-                    icon: L.divIcon({
-                        className: 'custom-marker',
-                        html: `<div style="background: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>`,
-                        iconSize: [16, 16]
-                    })
-                }).bindPopup(`<b>${sondeId}</b> - Start<br>Alt: ${start.alt.toFixed(1)}m`).addTo(this.map);
-
-                // Add end marker
-                const end = points[points.length - 1];
-                L.marker([end.lat, end.lon], {
-                    icon: L.divIcon({
-                        className: 'custom-marker',
-                        html: `<div style="background: ${color}; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(255,255,255,0.5);"></div>`,
-                        iconSize: [22, 22]
-                    })
-                }).bindPopup(`<b>${sondeId}</b> - End<br>Alt: ${end.alt.toFixed(1)}m`).addTo(this.map);
-            }
-        });
-
-        // Fit map to bounds
-        if (bounds.length > 0) {
-            this.map.fitBounds(bounds, {
-                padding: [20, 20]
-            });
-        }
-    }
-
-    updateCharts(data) {
-        // Destroy existing charts
-        Object.values(this.charts).forEach(chart => {
-            if (chart) chart.destroy();
-        });
-
-        const datasets = {
-            altitude: [],
-            speed: [],
-            verticalSpeed: [],
-            direction: []
-        };
-
-        Array.from(data.entries()).forEach(([sondeId, points], index) => {
-            const color = this.colors[index % this.colors.length];
-
-            datasets.altitude.push({
-                label: sondeId,
-                data: points.map(p => ({
-                    x: p.timestamp,
-                    y: p.alt
-                })),
-                borderColor: color,
-                backgroundColor: color + '20',
-                fill: false,
-                tension: 0.4,
-                pointRadius: 0
-            });
-
-            datasets.speed.push({
-                label: sondeId,
-                data: points.map(p => ({
-                    x: p.timestamp,
-                    y: p.vH
-                })),
-                borderColor: color,
-                backgroundColor: color + '20',
-                fill: false,
-                tension: 0.4,
-                pointRadius: 0
-            });
-
-            datasets.verticalSpeed.push({
-                label: sondeId,
-                data: points.map(p => ({
-                    x: p.timestamp,
-                    y: p.vV
-                })),
-                borderColor: color,
-                backgroundColor: color + '20',
-                fill: false,
-                tension: 0.4,
-                pointRadius: 0
-            });
-
-            datasets.direction.push({
-                label: sondeId,
-                data: points.map(p => ({
-                    x: p.timestamp,
-                    y: p.dir
-                })),
-                borderColor: color,
-                backgroundColor: color + '20',
-                fill: false,
-                tension: 0.4,
-                pointRadius: 0
-            });
-        });
-
-        const chartOptions = {
+// Create all charts
+function createCharts() {
+    // Altitude chart
+    const altCtx = document.getElementById('altitudeChart').getContext('2d');
+    altitudeChart = new Chart(altCtx, {
+        type: 'line',
+        data: {
+            datasets: []
+        },
+        options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
+                title: {
+                    display: true,
+                    text: 'Altitude vs Time',
+                    color: '#e0e0e0'
+                },
                 legend: {
-                    labels: {
-                        color: '#e0e6ed'
-                    }
+                    display: false
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
                 }
             },
             scales: {
                 x: {
-                    type: 'time',
-                    time: {
-                        displayFormats: {
-                            minute: 'HH:mm'
-                        }
-                    },
-                    ticks: {
+                    type: 'linear',
+                    title: {
+                        display: true,
+                        text: 'Time (minutes from launch)',
                         color: '#a0a0a0'
                     },
                     grid: {
-                        color: 'rgba(255,255,255,0.1)'
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
                     }
                 },
                 y: {
-                    ticks: {
+                    title: {
+                        display: true,
+                        text: 'Altitude (m)',
                         color: '#a0a0a0'
                     },
                     grid: {
-                        color: 'rgba(255,255,255,0.1)'
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
                     }
                 }
-            }
-        };
-
-        this.charts.altitude = new Chart(document.getElementById('altitudeChart'), {
-            type: 'line',
-            data: {
-                datasets: datasets.altitude
-            },
-            options: {
-                ...chartOptions,
-                scales: {
-                    ...chartOptions.scales,
-                    y: {
-                        ...chartOptions.scales.y,
-                        title: {
-                            display: true,
-                            text: 'Altitude (m)',
-                            color: '#a0a0a0'
-                        }
-                    }
-                }
-            }
-        });
-
-        this.charts.speed = new Chart(document.getElementById('speedChart'), {
-            type: 'line',
-            data: {
-                datasets: datasets.speed
-            },
-            options: {
-                ...chartOptions,
-                scales: {
-                    ...chartOptions.scales,
-                    y: {
-                        ...chartOptions.scales.y,
-                        title: {
-                            display: true,
-                            text: 'Speed (km/h)',
-                            color: '#a0a0a0'
-                        }
-                    }
-                }
-            }
-        });
-
-        this.charts.verticalSpeed = new Chart(document.getElementById('verticalSpeedChart'), {
-            type: 'line',
-            data: {
-                datasets: datasets.verticalSpeed
-            },
-            options: {
-                ...chartOptions,
-                scales: {
-                    ...chartOptions.scales,
-                    y: {
-                        ...chartOptions.scales.y,
-                        title: {
-                            display: true,
-                            text: 'Vertical Speed (m/s)',
-                            color: '#a0a0a0'
-                        }
-                    }
-                }
-            }
-        });
-
-        this.charts.direction = new Chart(document.getElementById('directionChart'), {
-            type: 'line',
-            data: {
-                datasets: datasets.direction
-            },
-            options: {
-                ...chartOptions,
-                scales: {
-                    ...chartOptions.scales,
-                    y: {
-                        ...chartOptions.scales.y,
-                        title: {
-                            display: true,
-                            text: 'Direction (°)',
-                            color: '#a0a0a0'
-                        },
-                        min: 0,
-                        max: 360
-                    }
-                }
-            }
-        });
-    }
-
-    updateStats(data) {
-        const allPoints = Array.from(data.values()).flat();
-        const statCards = document.querySelectorAll('.stat-card .stat-value');
-
-        if (allPoints.length === 0) {
-            statCards[0].textContent = '0';
-            statCards[1].textContent = '0';
-            statCards[2].textContent = '0 m';
-            statCards[3].textContent = '0 km/h';
-            return;
-        }
-
-        const maxAlt = Math.max(...allPoints.map(p => p.alt));
-        const maxSpeed = Math.max(...allPoints.map(p => p.vH));
-
-        statCards[0].textContent = data.size;
-        statCards[1].textContent = allPoints.length;
-        statCards[2].textContent = `${maxAlt.toFixed(0)} m`;
-        statCards[3].textContent = `${maxSpeed.toFixed(1)} km/h`;
-    }
-
-    exportToCSV() {
-        const data = this.getFilteredData();
-        if (data.size === 0) {
-            alert('No data to export');
-            return;
-        }
-
-        let csvContent = 'Sonde ID,Timestamp,Latitude,Longitude,Altitude (m),Horizontal Speed (km/h),Vertical Speed (m/s),Direction (°)\n';
-
-        for (const [sondeId, points] of data.entries()) {
-            for (const point of points) {
-                csvContent += `${sondeId},${point.timestamp.toISOString()},${point.lat},${point.lon},${point.alt},${point.vH},${point.vV},${point.dir}\n`;
             }
         }
+    });
 
-        const blob = new Blob([csvContent], {
-            type: 'text/csv;charset=utf-8;'
-        });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', 'radiosonde_data.csv');
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    // Speed chart
+    const speedCtx = document.getElementById('speedChart').getContext('2d');
+    speedChart = new Chart(speedCtx, {
+        type: 'line',
+        data: {
+            datasets: []
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Horizontal Speed vs Time',
+                    color: '#e0e0e0'
+                },
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            scales: {
+                x: {
+                    type: 'linear',
+                    title: {
+                        display: true,
+                        text: 'Time (minutes from launch)',
+                        color: '#a0a0a0'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Horizontal Speed (km/h)',
+                        color: '#a0a0a0'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                }
+            }
+        }
+    });
+
+    // Vertical velocity chart
+    const velocityCtx = document.getElementById('velocityChart').getContext('2d');
+    velocityChart = new Chart(velocityCtx, {
+        type: 'line',
+        data: {
+            datasets: []
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Vertical Velocity vs Time',
+                    color: '#e0e0e0'
+                },
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            scales: {
+                x: {
+                    type: 'linear',
+                    title: {
+                        display: true,
+                        text: 'Time (minutes from launch)',
+                        color: '#a0a0a0'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Vertical Velocity (m/s)',
+                        color: '#a0a0a0'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                }
+            }
+        }
+    });
+
+    // Direction chart
+    const directionCtx = document.getElementById('directionChart').getContext('2d');
+    directionChart = new Chart(directionCtx, {
+        type: 'scatter',
+        data: {
+            datasets: []
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Direction Analysis',
+                    color: '#e0e0e0'
+                },
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            scales: {
+                x: {
+                    type: 'linear',
+                    title: {
+                        display: true,
+                        text: 'Time (minutes from launch)',
+                        color: '#a0a0a0'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    min: 0,
+                    max: 360,
+                    title: {
+                        display: true,
+                        text: 'Direction (°)',
+                        color: '#a0a0a0'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0a0a0'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Setup event listeners
+function setupEventListeners() {
+    // File input handler
+    document.getElementById('logFiles').addEventListener('change', handleFileSelection);
+
+    // Map style buttons
+    document.querySelectorAll('.map-style-btn').forEach(btn => {
+        btn.addEventListener('click', () => setMapStyle(btn.dataset.style));
+    });
+}
+
+// Handle file selection
+async function handleFileSelection(event) {
+    const files = Array.from(event.target.files);
+    flightData = [];
+    activeSondes.clear();
+
+    // Clear existing map layers except base layer
+    map.eachLayer(layer => {
+        if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
+            map.removeLayer(layer);
+        }
+    });
+
+    // Process each file
+    for (const file of files) {
+        if (file.name.endsWith('.log')) {
+            try {
+                const content = await file.text();
+                const flight = parseLogFile(content, file.name);
+                if (flight) {
+                    flightData.push(flight);
+                    activeSondes.add(flight.id);
+                }
+            } catch (error) {
+                console.error(`Error processing file ${file.name}:`, error);
+            }
+        }
     }
 
-    showLoading(show) {
-        document.getElementById('loading').style.display = show ? 'block' : 'none';
+    // Update UI
+    updateSondesList();
+    updateMap();
+    updateCharts();
+    updateStats();
+}
+
+// Parse log file content
+function parseLogFile(content, filename) {
+    const lines = content.split('\n').filter(line => line.trim());
+    const points = [];
+    const id = generateId();
+    const name = filename.replace('.log', '');
+
+    lines.forEach(line => {
+        const match = line.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \| Lat: ([\d.-]+), Lon: ([\d.-]+), Alt: ([\d.-]+) m, vH: ([\d.-]+) km\/h, vV: ([\d.-]+) m\/s, Dir: ([\d.-]+)/);
+
+        if (match) {
+            const [, timestamp, lat, lon, alt, vH, vV, dir] = match;
+            points.push({
+                timestamp: new Date(timestamp),
+                lat: parseFloat(lat),
+                lon: parseFloat(lon),
+                altitude: parseFloat(alt),
+                horizontalVelocity: parseFloat(vH),
+                verticalVelocity: parseFloat(vV),
+                direction: parseFloat(dir)
+            });
+        }
+    });
+
+    if (points.length === 0) return null;
+
+    // Generate a consistent color for this sonde based on its name
+    const color = generateColorFromName(name);
+
+    return {
+        id: id,
+        filename: name,
+        points: points,
+        launchTime: points[0].timestamp,
+        maxAltitude: Math.max(...points.map(p => p.altitude)),
+        maxSpeed: Math.max(...points.map(p => p.horizontalVelocity)),
+        duration: (points[points.length - 1].timestamp - points[0].timestamp) / 1000 / 60, // minutes
+        color: color
+    };
+}
+
+// Generate unique ID for flight
+function generateId() {
+    return 'flight_' + Math.random().toString(36).substr(2, 9);
+}
+
+// Update sondes list in sidebar
+function updateSondesList() {
+    const container = document.getElementById('sondesContainer');
+
+    if (flightData.length === 0) {
+        container.innerHTML = '<div class="no-sondes">No sondes loaded yet</div>';
+        return;
+    }
+
+    container.innerHTML = '';
+
+    flightData.forEach(flight => {
+        const isActive = activeSondes.has(flight.id);
+        const sondeElement = document.createElement('div');
+        sondeElement.className = `sonde-item ${isActive ? 'active' : ''}`;
+        sondeElement.dataset.id = flight.id;
+
+        sondeElement.innerHTML = `
+            <div class="sonde-color" style="background-color: ${flight.color}"></div>
+            <div class="sonde-info">
+                <div class="sonde-name">${flight.filename}</div>
+                <div class="sonde-details">
+                    <span>${flight.launchTime.toLocaleDateString()}</span>
+                    <span>${flight.points.length} points</span>
+                </div>
+            </div>
+            <div class="sonde-toggle">
+                <i class="fas ${isActive ? 'fa-eye' : 'fa-eye-slash'}"></i>
+            </div>
+        `;
+
+        sondeElement.addEventListener('click', () => toggleSonde(flight.id));
+        container.appendChild(sondeElement);
+    });
+}
+
+// Toggle sonde visibility
+function toggleSonde(id) {
+    if (activeSondes.has(id)) {
+        activeSondes.delete(id);
+    } else {
+        activeSondes.add(id);
+    }
+
+    updateSondesList();
+    updateMap();
+    updateCharts();
+}
+
+// Update map with flight paths
+function updateMap() {
+    // Clear existing layers except base layer
+    map.eachLayer(layer => {
+        if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
+            map.removeLayer(layer);
+        }
+    });
+
+    const bounds = [];
+
+    flightData.forEach(flight => {
+        if (!activeSondes.has(flight.id)) return;
+
+        const coordinates = flight.points.map(p => [p.lat, p.lon]);
+        bounds.push(...coordinates);
+
+        // Create polyline
+        const polyline = L.polyline(coordinates, {
+            color: flight.color,
+            weight: 3,
+            opacity: 0.8
+        }).addTo(map);
+
+        // Add markers for start and end
+        const startMarker = L.circleMarker([flight.points[0].lat, flight.points[0].lon], {
+            color: flight.color,
+            fillColor: flight.color,
+            fillOpacity: 0.8,
+            radius: 6
+        }).addTo(map);
+
+        const endMarker = L.circleMarker([flight.points[flight.points.length - 1].lat,
+            flight.points[flight.points.length - 1].lon
+        ], {
+            color: flight.color,
+            fillColor: 'white',
+            fillOpacity: 0.8,
+            radius: 8
+        }).addTo(map);
+
+        // Add interactive points along the path
+        flight.points.forEach((point, index) => {
+            if (index % Math.ceil(flight.points.length / 20) === 0) {
+                L.circleMarker([point.lat, point.lon], {
+                    color: flight.color,
+                    fillColor: flight.color,
+                    fillOpacity: 0.6,
+                    radius: 3
+                }).bindPopup(`
+                    <div style="color: #333;">
+                        <strong>${flight.filename}</strong><br>
+                        <strong>Time:</strong> ${point.timestamp.toLocaleString()}<br>
+                        <strong>Altitude:</strong> ${point.altitude.toFixed(1)} m<br>
+                        <strong>H. Speed:</strong> ${point.horizontalVelocity.toFixed(1)} km/h<br>
+                        <strong>V. Speed:</strong> ${point.verticalVelocity.toFixed(1)} m/s<br>
+                        <strong>Direction:</strong> ${point.direction.toFixed(1)}°
+                    </div>
+                `).addTo(map);
+            }
+        });
+
+        // Add flight info popup to start marker
+        startMarker.bindPopup(`
+            <div style="color: #333;">
+                <strong>${flight.filename}</strong><br>
+                <strong>Launch:</strong> ${flight.launchTime.toLocaleString()}<br>
+                <strong>Color:</strong> <span style="color: ${flight.color}">■</span><br>
+                <strong>Max Altitude:</strong> ${flight.maxAltitude.toFixed(1)} m<br>
+                <strong>Duration:</strong> ${flight.duration.toFixed(1)} min<br>
+                <strong>Points:</strong> ${flight.points.length}
+            </div>
+        `);
+    });
+
+    // Fit map to show all active flights
+    if (bounds.length > 0) {
+        map.fitBounds(bounds, {
+            padding: [20, 20]
+        });
     }
 }
 
-// Initialize the dashboard when the page loads
-document.addEventListener('DOMContentLoaded', () => {
-    new RadiosondeDashboard();
-});
+// Update all charts
+function updateCharts() {
+    const altDatasets = [];
+    const speedDatasets = [];
+    const velocityDatasets = [];
+    const directionDatasets = [];
+
+    flightData.forEach((flight, index) => {
+        if (!activeSondes.has(flight.id)) return;
+
+        const startTime = flight.points[0].timestamp;
+
+        const altData = flight.points.map(point => ({
+            x: (point.timestamp - startTime) / 1000 / 60,
+            y: point.altitude
+        }));
+
+        const speedData = flight.points.map(point => ({
+            x: (point.timestamp - startTime) / 1000 / 60,
+            y: point.horizontalVelocity
+        }));
+
+        const velocityData = flight.points.map(point => ({
+            x: (point.timestamp - startTime) / 1000 / 60,
+            y: point.verticalVelocity
+        }));
+
+        const directionData = flight.points.map(point => ({
+            x: (point.timestamp - startTime) / 1000 / 60,
+            y: point.direction
+        }));
+
+        altDatasets.push({
+            label: flight.filename,
+            data: altData,
+            borderColor: flight.color,
+            backgroundColor: flight.color + '40',
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 1,
+            pointHoverRadius: 4
+        });
+
+        speedDatasets.push({
+            label: flight.filename,
+            data: speedData,
+            borderColor: flight.color,
+            backgroundColor: flight.color + '40',
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 1,
+            pointHoverRadius: 4
+        });
+
+        velocityDatasets.push({
+            label: flight.filename,
+            data: velocityData,
+            borderColor: flight.color,
+            backgroundColor: flight.color + '40',
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 1,
+            pointHoverRadius: 4
+        });
+
+        directionDatasets.push({
+            label: flight.filename,
+            data: directionData,
+            borderColor: flight.color,
+            backgroundColor: flight.color + '40',
+            borderWidth: 2,
+            pointRadius: 2,
+            pointHoverRadius: 5
+        });
+    });
+
+    altitudeChart.data.datasets = altDatasets;
+    speedChart.data.datasets = speedDatasets;
+    velocityChart.data.datasets = velocityDatasets;
+    directionChart.data.datasets = directionDatasets;
+
+    altitudeChart.update();
+    speedChart.update();
+    velocityChart.update();
+    directionChart.update();
+}
+
+// Update statistics
+function updateStats() {
+    const activeFlights = flightData.filter(f => activeSondes.has(f.id));
+    const total = activeFlights.length;
+
+    if (total === 0) {
+        document.getElementById('totalFlights').textContent = '0';
+        document.getElementById('maxAltitude').textContent = '0 m';
+        document.getElementById('avgDuration').textContent = '0 min';
+        document.getElementById('maxSpeed').textContent = '0 km/h';
+        return;
+    }
+
+    const maxAlt = Math.max(...activeFlights.map(f => f.maxAltitude));
+    const maxSpeed = Math.max(...activeFlights.map(f => f.maxSpeed));
+    const avgDuration = activeFlights.reduce((sum, f) => sum + f.duration, 0) / total;
+
+    document.getElementById('totalFlights').textContent = total;
+    document.getElementById('maxAltitude').textContent = maxAlt.toFixed(1) + ' m';
+    document.getElementById('avgDuration').textContent = avgDuration.toFixed(1) + ' min';
+    document.getElementById('maxSpeed').textContent = maxSpeed.toFixed(1) + ' km/h';
+}
+
+// Initialize the application when the DOM is loaded
+document.addEventListener('DOMContentLoaded', init);
