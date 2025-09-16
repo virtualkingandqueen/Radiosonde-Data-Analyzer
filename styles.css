@@ -1,0 +1,455 @@
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+body {
+	font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+	background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+	color: #e0e6ed;
+	min-height: 100vh;
+	overflow-x: hidden;
+}
+
+.header {
+	background: rgba(0, 0, 0, 0.3);
+	padding: 1rem 2rem;
+	backdrop-filter: blur(10px);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.header h1 {
+	font-size: 2rem;
+	background: linear-gradient(45deg, #00d4ff, #00ff88);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	background-clip: text;
+	margin-bottom: 0.5rem;
+}
+
+.controls {
+	display: flex;
+	gap: 1rem;
+	margin-top: 1rem;
+	flex-wrap: wrap;
+	align-items: center;
+}
+
+.control-group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.control-group label {
+	font-size: 0.9rem;
+	color: #a0a0a0;
+}
+
+input,
+select,
+button {
+	padding: 0.5rem;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.1);
+	color: #e0e6ed;
+	font-size: 0.9rem;
+	backdrop-filter: blur(5px);
+}
+
+button {
+	background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+	border: none;
+	cursor: pointer;
+	transition: transform 0.2s, box-shadow 0.2s;
+	font-weight: 500;
+	align-self: flex-end;
+	margin-top: 1.2rem;
+}
+
+button:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.loading {
+	display: none;
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	text-align: center;
+	z-index: 1000;
+	background: rgba(0, 0, 0, 0.8);
+	padding: 2rem;
+	border-radius: 12px;
+	backdrop-filter: blur(10px);
+}
+
+.loading p {
+	margin-top: 1rem;
+	font-size: 1.1rem;
+	color: #00d4ff;
+}
+
+.spinner {
+	width: 40px;
+	height: 40px;
+	border: 4px solid rgba(255, 255, 255, 0.1);
+	border-left: 4px solid #00d4ff;
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+	margin: 0 auto;
+}
+
+@keyframes spin {
+	0% {
+		transform: rotate(0deg);
+	}
+
+	100% {
+		transform: rotate(360deg);
+	}
+}
+
+.main-content {
+	display: grid;
+	grid-template-columns: 300px 1fr 1fr;
+	grid-template-rows: 1fr 1fr;
+	gap: 1rem;
+	padding: 1rem;
+	height: calc(100vh - 150px);
+}
+
+.sidebar {
+	grid-row: 1 / span 2;
+	background: rgba(0, 0, 0, 0.3);
+	border-radius: 12px;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	backdrop-filter: blur(10px);
+	padding: 1rem;
+	overflow-y: auto;
+}
+
+.sidebar h3 {
+	margin-bottom: 1rem;
+	color: #00d4ff;
+	font-size: 1.2rem;
+}
+
+.sonde-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin-bottom: 1.5rem;
+}
+
+.sonde-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem;
+	background: rgba(255, 255, 255, 0.1);
+	border-radius: 6px;
+	font-size: 0.9rem;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+.sonde-item:hover {
+	background: rgba(255, 255, 255, 0.2);
+}
+
+.sonde-checkbox {
+	margin: 0;
+}
+
+.sonde-color {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.map-container {
+	grid-column: 2 / span 2;
+	background: rgba(0, 0, 0, 0.3);
+	border-radius: 12px;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	backdrop-filter: blur(10px);
+	overflow: hidden;
+}
+
+#map {
+	width: 100%;
+	height: 100%;
+}
+
+.charts-container {
+	grid-column: 2 / span 2;
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 1rem;
+	overflow-y: auto;
+	padding-right: 0.5rem;
+}
+
+.chart-section {
+	background: rgba(0, 0, 0, 0.3);
+	border-radius: 12px;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	backdrop-filter: blur(10px);
+	padding: 1rem;
+	margin-bottom: 0;
+}
+
+.chart-section h3 {
+	margin-bottom: 1rem;
+	color: #00d4ff;
+	font-size: 1.1rem;
+}
+
+.chart-wrapper {
+	position: relative;
+	height: 200px;
+	background: rgba(255, 255, 255, 0.05);
+	border-radius: 8px;
+	padding: 0.5rem;
+}
+
+.stats {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 0.5rem;
+	margin-top: 1.5rem;
+}
+
+.stat-card {
+	background: rgba(255, 255, 255, 0.05);
+	padding: 0.8rem;
+	border-radius: 8px;
+	border-left: 3px solid #00d4ff;
+}
+
+.stat-value {
+	font-size: 1.2rem;
+	font-weight: bold;
+	color: #00d4ff;
+}
+
+.stat-label {
+	font-size: 0.8rem;
+	color: #a0a0a0;
+	margin-top: 0.3rem;
+}
+
+/* Custom scrollbar for webkit browsers */
+::-webkit-scrollbar {
+	width: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: rgba(255, 255, 255, 0.05);
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgba(0, 212, 255, 0.3);
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: rgba(0, 212, 255, 0.5);
+}
+
+/* Kitchen sink approach to hide scrollbar on all browsers */
+* {
+	scrollbar-width: none;
+	/* Firefox */
+	-ms-overflow-style: none;
+	/* IE and legacy Edge */
+}
+
+*::-webkit-scrollbar {
+	display: none;
+	/* Webkit browsers */
+	width: 0;
+	height: 0;
+}
+
+/* Hide scrollbar */
+html,
+body,
+div,
+section,
+article,
+aside,
+nav,
+main,
+header,
+footer,
+ul,
+ol,
+li,
+table,
+tbody,
+thead,
+tfoot,
+tr,
+td,
+th,
+iframe,
+embed,
+object,
+canvas,
+svg,
+video,
+audio,
+pre,
+code,
+textarea,
+select,
+input[type="text"],
+input[type="search"],
+.sidebar,
+.content,
+.container,
+.wrapper,
+.scrollable {
+	scrollbar-width: none !important;
+	/* Firefox */
+	-ms-overflow-style: none !important;
+	/* IE and legacy Edge */
+}
+
+/* Also apply to sidebar which has overflow-y: auto */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+div::-webkit-scrollbar,
+section::-webkit-scrollbar,
+article::-webkit-scrollbar,
+aside::-webkit-scrollbar,
+nav::-webkit-scrollbar,
+main::-webkit-scrollbar,
+header::-webkit-scrollbar,
+footer::-webkit-scrollbar,
+ul::-webkit-scrollbar,
+ol::-webkit-scrollbar,
+li::-webkit-scrollbar,
+table::-webkit-scrollbar,
+tbody::-webkit-scrollbar,
+thead::-webkit-scrollbar,
+tfoot::-webkit-scrollbar,
+tr::-webkit-scrollbar,
+td::-webkit-scrollbar,
+th::-webkit-scrollbar,
+iframe::-webkit-scrollbar,
+embed::-webkit-scrollbar,
+object::-webkit-scrollbar,
+canvas::-webkit-scrollbar,
+svg::-webkit-scrollbar,
+video::-webkit-scrollbar,
+audio::-webkit-scrollbar,
+pre::-webkit-scrollbar,
+code::-webkit-scrollbar,
+textarea::-webkit-scrollbar,
+select::-webkit-scrollbar,
+input[type="text"]::-webkit-scrollbar,
+input[type="search"]::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar,
+.content::-webkit-scrollbar,
+.container::-webkit-scrollbar,
+.wrapper::-webkit-scrollbar,
+.scrollable::-webkit-scrollbar {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+	background: transparent !important;
+}
+
+/* Extra strength for stubborn elements */
+*[style*="overflow"] {
+	scrollbar-width: none !important;
+	-ms-overflow-style: none !important;
+}
+
+*[style*="overflow"]::-webkit-scrollbar {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+}
+
+/* Target elements with overflow classes */
+.overflow-auto,
+.overflow-scroll,
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-y-scroll,
+.overflow-x-scroll {
+	scrollbar-width: none !important;
+	-ms-overflow-style: none !important;
+}
+
+.overflow-auto::-webkit-scrollbar,
+.overflow-scroll::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar,
+.overflow-y-scroll::-webkit-scrollbar,
+.overflow-x-scroll::-webkit-scrollbar {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+}
+
+/* Firefox-specific additional targeting */
+@-moz-document url-prefix() {
+	* {
+		scrollbar-width: none !important;
+	}
+
+	html,
+	body {
+		scrollbar-width: none !important;
+		overflow: -moz-scrollbars-none !important;
+	}
+}
+
+@media (max-width: 1200px) {
+	.main-content {
+		grid-template-columns: 250px 1fr;
+		grid-template-rows: auto auto;
+	}
+
+	.charts-container {
+		grid-column: 1 / span 2;
+		grid-template-columns: 1fr;
+	}
+}
+
+@media (max-width: 768px) {
+	.main-content {
+		grid-template-columns: 1fr;
+		grid-template-rows: auto;
+		height: auto;
+	}
+
+	.sidebar {
+		grid-row: auto;
+	}
+
+	.map-container {
+		grid-column: auto;
+		height: 400px;
+	}
+
+	.charts-container {
+		grid-column: auto;
+	}
+
+	.controls {
+		flex-direction: column;
+		align-items: stretch;
+	}
+}
