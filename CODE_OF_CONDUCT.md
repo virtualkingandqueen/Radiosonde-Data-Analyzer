@@ -1,6 +1,6 @@
 <div align="center">
 
-# Code of Conduct - Wall-of-Fame
+# Code of Conduct - Radiosonde-Data-Analyzer
 
 </div>
 
