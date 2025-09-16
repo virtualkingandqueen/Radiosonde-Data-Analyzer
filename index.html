@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radiosonde Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+  </head>
+  <body>
+    <div class="header">
+      <h1>Radiosonde Dashboard</h1>
+      <div class="controls">
+        <div class="control-group">
+          <label for="fileInput">Select Sonde Log Files:</label>
+          <input type="file" id="fileInput" multiple accept=".log">
+        </div>
+        <div class="control-group">
+          <label for="startDate">Start Date:</label>
+          <input type="date" id="startDate">
+        </div>
+        <div class="control-group">
+          <label for="endDate">End Date:</label>
+          <input type="date" id="endDate">
+        </div>
+        <div class="control-group">
+          <label for="timeRange">Quick Range:</label>
+          <select id="timeRange">
+            <option value="all">All Time</option>
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="365">Last year</option>
+          </select>
+        </div>
+        <button id="refreshData">Refresh Data</button>
+        <button id="exportData">Export CSV</button>
+      </div>
+    </div>
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p>Loading radiosonde data...</p>
+    </div>
+    <div class="main-content">
+      <div class="sidebar">
+        <h3>Active Sondes</h3>
+        <div class="sonde-list" id="sondeList"></div>
+        <div class="stats" id="stats">
+          <div class="stat-card">
+            <div class="stat-value">0</div>
+            <div class="stat-label">Active Sondes</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">0</div>
+            <div class="stat-label">Total Points</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">0 m</div>
+            <div class="stat-label">Max Altitude</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">0 km/h</div>
+            <div class="stat-label">Max Speed</div>
+          </div>
+        </div>
+      </div>
+      <div class="map-container">
+        <div id="map"></div>
+      </div>
+      <div class="charts-container">
+        <div class="chart-section">
+          <h3>Altitude Profile</h3>
+          <div class="chart-wrapper">
+            <canvas id="altitudeChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-section">
+          <h3>Horizontal Speed</h3>
+          <div class="chart-wrapper">
+            <canvas id="speedChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-section">
+          <h3>Vertical Speed</h3>
+          <div class="chart-wrapper">
+            <canvas id="verticalSpeedChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-section">
+          <h3>Direction</h3>
+          <div class="chart-wrapper">
+            <canvas id="directionChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>
