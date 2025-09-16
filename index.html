@@ -3,96 +3,127 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Radiosonde Dashboard</title>
+    <title>Radiosonde Data Analyzer</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
   </head>
   <body>
     <div class="header">
-      <h1>Radiosonde Dashboard</h1>
-      <div class="controls">
-        <div class="control-group">
-          <label for="fileInput">Select Sonde Log Files:</label>
-          <input type="file" id="fileInput" multiple accept=".log">
-        </div>
-        <div class="control-group">
-          <label for="startDate">Start Date:</label>
-          <input type="date" id="startDate">
-        </div>
-        <div class="control-group">
-          <label for="endDate">End Date:</label>
-          <input type="date" id="endDate">
-        </div>
-        <div class="control-group">
-          <label for="timeRange">Quick Range:</label>
-          <select id="timeRange">
-            <option value="all">All Time</option>
-            <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days</option>
-            <option value="90">Last 90 days</option>
-            <option value="365">Last year</option>
-          </select>
-        </div>
-        <button id="refreshData">Refresh Data</button>
-        <button id="exportData">Export CSV</button>
+      <h1>
+        <i class="fas fa-satellite"></i>Radiosonde Data Analyzer
+      </h1>
+      <div class="header-buttons">
+        <a href="https://github.com/ThatSINEWAVE/Radiosonde-Data-Analyzer" target="_blank" class="header-btn" title="GitHub">
+          <i class="fab fa-github"></i>
+        </a>
+        <a href="https://thatsinewave.github.io/Discord-Redirect" target="_blank" class="header-btn" title="Discord">
+          <i class="fab fa-discord"></i>
+        </a>
+        <a href="https://ko-fi.com/thatsinewave" target="_blank" class="header-btn" title="Support on Ko-fi">
+          <i class="fas fa-heart"></i>
+        </a>
       </div>
     </div>
-    <div class="loading" id="loading">
-      <div class="spinner"></div>
-      <p>Loading radiosonde data...</p>
-    </div>
-    <div class="main-content">
+    <div class="main-container">
       <div class="sidebar">
-        <h3>Active Sondes</h3>
-        <div class="sonde-list" id="sondeList"></div>
-        <div class="stats" id="stats">
-          <div class="stat-card">
-            <div class="stat-value">0</div>
-            <div class="stat-label">Active Sondes</div>
+        <div class="controls-panel">
+          <div class="file-input-wrapper">
+            <input type="file" id="logFiles" class="file-input" multiple webkitdirectory accept=".log">
+            <label for="logFiles" class="file-input-label">
+              <i class="fas fa-folder-open"></i> Select Log Files Folder </label>
           </div>
-          <div class="stat-card">
-            <div class="stat-value">0</div>
-            <div class="stat-label">Total Points</div>
+          <div class="map-controls">
+            <h3>Map Style</h3>
+            <div class="map-style-buttons">
+              <button class="map-style-btn active" data-style="dark">Dark</button>
+              <button class="map-style-btn" data-style="light">Light</button>
+              <button class="map-style-btn" data-style="terrain">Terrain</button>
+              <button class="map-style-btn" data-style="satellite">Satellite</button>
+            </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-value">0 m</div>
-            <div class="stat-label">Max Altitude</div>
+          <div class="sondes-list">
+            <h3>Loaded Sondes</h3>
+            <div id="sondesContainer" class="sondes-container">
+              <div class="no-sondes">No sondes loaded yet</div>
+            </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-value">0 km/h</div>
-            <div class="stat-label">Max Speed</div>
+        </div>
+        <div class="stats-panel">
+          <h3>Statistics</h3>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-label">Total Flights</div>
+              <div class="stat-value" id="totalFlights">0</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Max Altitude</div>
+              <div class="stat-value" id="maxAltitude">0 m</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Avg. Duration</div>
+              <div class="stat-value" id="avgDuration">0 min</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Max Speed</div>
+              <div class="stat-value" id="maxSpeed">0 km/h</div>
+            </div>
           </div>
         </div>
       </div>
-      <div class="map-container">
-        <div id="map"></div>
-      </div>
-      <div class="charts-container">
-        <div class="chart-section">
-          <h3>Altitude Profile</h3>
-          <div class="chart-wrapper">
-            <canvas id="altitudeChart"></canvas>
+      <div class="content-area">
+        <div class="map-panel">
+          <div class="panel-header">
+            <h2>
+              <i class="fas fa-map-marked-alt"></i>Flight Paths
+            </h2>
+          </div>
+          <div class="panel-content">
+            <div id="map"></div>
           </div>
         </div>
-        <div class="chart-section">
-          <h3>Horizontal Speed</h3>
-          <div class="chart-wrapper">
-            <canvas id="speedChart"></canvas>
+        <div class="charts-container">
+          <div class="chart-panel">
+            <div class="panel-header">
+              <h2>
+                <i class="fas fa-chart-line"></i>Altitude Analysis
+              </h2>
+            </div>
+            <div class="panel-content">
+              <canvas id="altitudeChart"></canvas>
+            </div>
           </div>
-        </div>
-        <div class="chart-section">
-          <h3>Vertical Speed</h3>
-          <div class="chart-wrapper">
-            <canvas id="verticalSpeedChart"></canvas>
+          <div class="chart-panel">
+            <div class="panel-header">
+              <h2>
+                <i class="fas fa-chart-line"></i>Speed Analysis
+              </h2>
+            </div>
+            <div class="panel-content">
+              <canvas id="speedChart"></canvas>
+            </div>
           </div>
-        </div>
-        <div class="chart-section">
-          <h3>Direction</h3>
-          <div class="chart-wrapper">
-            <canvas id="directionChart"></canvas>
+          <div class="chart-panel">
+            <div class="panel-header">
+              <h2>
+                <i class="fas fa-chart-line"></i>Vertical Velocity
+              </h2>
+            </div>
+            <div class="panel-content">
+              <canvas id="velocityChart"></canvas>
+            </div>
+          </div>
+          <div class="chart-panel">
+            <div class="panel-header">
+              <h2>
+                <i class="fas fa-chart-line"></i>Direction Analysis
+              </h2>
+            </div>
+            <div class="panel-content">
+              <canvas id="directionChart"></canvas>
+            </div>
           </div>
         </div>
       </div>
