@@ -24,6 +24,10 @@ let flightData = [];
 let mapLayer;
 let altitudeChart, speedChart, velocityChart, directionChart;
 let activeSondes = new Set();
+let currentDirectoryHandle = null;
+let refreshInterval;
+let isAutoRefreshEnabled = false;
+let fileHandlesCache = new Map();
 
 // Initialize the application
 function init() {
@@ -314,7 +318,10 @@ function createCharts() {
 // Setup event listeners
 function setupEventListeners() {
     // File input handler
-    document.getElementById('logFiles').addEventListener('change', handleFileSelection);
+    document.getElementById('logFiles').addEventListener('click', async (e) => {
+        e.preventDefault();
+        await selectDirectory();
+    });
 
     // Map style buttons
     document.querySelectorAll('.map-style-btn').forEach(btn => {
@@ -322,47 +329,161 @@ function setupEventListeners() {
     });
 }
 
-// Handle file selection
-async function handleFileSelection(event) {
-    const files = Array.from(event.target.files);
-    flightData = [];
-    activeSondes.clear();
-
-    // Clear existing map layers except base layer
-    map.eachLayer(layer => {
-        if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
-            map.removeLayer(layer);
+// Select directory using the File System Access API
+async function selectDirectory() {
+    try {
+        // Check if the File System Access API is supported
+        if (!window.showDirectoryPicker) {
+            alert('Your browser does not support the File System Access API. Please use Chrome, Edge, or another modern browser.');
+            return;
         }
-    });
 
-    // Process each file
-    for (const file of files) {
-        if (file.name.endsWith('.log')) {
-            try {
-                const content = await file.text();
-                const flight = parseLogFile(content, file.name);
-                if (flight) {
-                    flightData.push(flight);
-                    activeSondes.add(flight.id);
-                }
-            } catch (error) {
-                console.error(`Error processing file ${file.name}:`, error);
-            }
+        // Request directory access
+        currentDirectoryHandle = await window.showDirectoryPicker();
+
+        // Clear any existing refresh interval
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+        }
+
+        // Process initial load
+        await processDirectory();
+
+        // Start auto-refresh every second
+        refreshInterval = setInterval(async () => {
+            await processDirectory(true);
+        }, 1000);
+
+        isAutoRefreshEnabled = true;
+        console.log('Auto-refresh enabled');
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            console.error('Error selecting directory:', error);
         }
     }
+}
 
-    // Update UI
-    updateSondesList();
-    updateMap();
-    updateCharts();
-    updateStats();
+// Process directory (initial load or refresh)
+async function processDirectory(isRefresh = false) {
+    if (!currentDirectoryHandle) return;
+
+    let hasNewData = false;
+
+    try {
+        // Get all files in the directory
+        const files = [];
+        for await (const entry of currentDirectoryHandle.values()) {
+            if (entry.kind === 'file' && entry.name.endsWith('.log')) {
+                files.push(entry);
+            }
+        }
+
+        // Process each file
+        for (const fileHandle of files) {
+            try {
+                const file = await fileHandle.getFile();
+                const lastModified = file.lastModified;
+                const cachedFile = fileHandlesCache.get(file.name);
+
+                // Skip if file hasn't changed since last check
+                if (isRefresh && cachedFile && cachedFile.lastModified === lastModified) {
+                    continue;
+                }
+
+                // Read and process the file
+                const content = await file.text();
+                const flight = parseLogFile(content, file.name);
+
+                if (flight) {
+                    // Store file metadata in cache
+                    fileHandlesCache.set(file.name, {
+                        lastModified: lastModified,
+                        flightId: flight.id
+                    });
+
+                    // Check if this flight already exists
+                    const existingFlightIndex = flightData.findIndex(f => f.filename === flight.filename);
+
+                    if (existingFlightIndex === -1) {
+                        // New flight
+                        flightData.push(flight);
+                        activeSondes.add(flight.id);
+                        hasNewData = true;
+                        console.log(`New flight detected: ${flight.filename}`);
+                    } else {
+                        // Existing flight - check if it has new data
+                        const existingFlight = flightData[existingFlightIndex];
+
+                        // Store the active state before updating
+                        const wasActive = activeSondes.has(existingFlight.id);
+
+                        // Calculate content hash to detect actual changes
+                        const contentHash = await hashContent(content);
+
+                        // Check if we have a cached hash for this file
+                        const cachedHash = cachedFile ? cachedFile.contentHash : null;
+
+                        // Update if content has changed or if we have more data points
+                        if (contentHash !== cachedHash || flight.points.length > existingFlight.points.length) {
+                            // Update the flight with new data but preserve the ID
+                            flight.id = existingFlight.id; // Keep the same ID
+                            flightData[existingFlightIndex] = flight;
+
+                            // Restore the active state
+                            if (wasActive) {
+                                activeSondes.add(flight.id);
+                            }
+
+                            // Update cache with new hash
+                            fileHandlesCache.set(file.name, {
+                                lastModified: lastModified,
+                                flightId: flight.id,
+                                contentHash: contentHash
+                            });
+
+                            hasNewData = true;
+                            console.log(`Flight updated: ${flight.filename} (${flight.points.length} points)`);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`Error processing file ${fileHandle.name}:`, error);
+            }
+        }
+
+        // Only update UI if we have new data
+        if (hasNewData || !isRefresh) {
+            updateSondesList();
+            updateMap();
+            updateCharts();
+            updateStats();
+        }
+    } catch (error) {
+        console.error('Error processing directory:', error);
+    }
+}
+
+// Simple hash function to detect content changes
+async function hashContent(content) {
+    // Use a simple hash to detect content changes
+    let hash = 0;
+    if (content.length === 0) return hash;
+
+    for (let i = 0; i < content.length; i++) {
+        const char = content.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+    }
+
+    return hash;
 }
 
 // Parse log file content
 function parseLogFile(content, filename) {
     const lines = content.split('\n').filter(line => line.trim());
     const points = [];
-    const id = generateId();
+    // Generate a consistent ID based on filename instead of random
+    const id = generateIdFromFilename(filename);
     const name = filename.replace('.log', '');
 
     lines.forEach(line => {
@@ -399,9 +520,16 @@ function parseLogFile(content, filename) {
     };
 }
 
-// Generate unique ID for flight
-function generateId() {
-    return 'flight_' + Math.random().toString(36).substr(2, 9);
+// Generate consistent ID based on filename instead of random
+function generateIdFromFilename(filename) {
+    // Simple hash function to generate consistent ID from filename
+    let hash = 0;
+    for (let i = 0; i < filename.length; i++) {
+        const char = filename.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+    }
+    return 'flight_' + Math.abs(hash).toString(16);
 }
 
 // Update sondes list in sidebar
