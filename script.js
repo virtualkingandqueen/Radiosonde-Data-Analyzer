@@ -28,6 +28,9 @@ let currentDirectoryHandle = null;
 let refreshInterval;
 let isAutoRefreshEnabled = false;
 let fileHandlesCache = new Map();
+let mapMode = 'full'; // 'free', 'track', or 'full'
+let trackMarker = null;
+let trackCircle = null;
 
 // Initialize the application
 function init() {
@@ -67,6 +70,88 @@ function setMapStyle(style) {
             btn.classList.remove('active');
         }
     });
+}
+
+// Set map mode
+function setMapMode(mode) {
+    mapMode = mode;
+
+    // Update active button state
+    document.querySelectorAll('.map-mode-btn').forEach(btn => {
+        if (btn.dataset.mode === mode) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    // Adjust map view based on mode
+    if (mode === 'track') {
+        trackActiveSondes();
+    } else if (mode === 'full') {
+        fitAllActiveFlights();
+    }
+    // For 'free' mode, do nothing - let user control the map
+}
+
+// Track active sondes
+function trackActiveSondes() {
+    if (mapMode !== 'track') return;
+
+    const activeFlights = flightData.filter(f => activeSondes.has(f.id));
+    if (activeFlights.length === 0) return;
+
+    // For simplicity, track the first active sonde
+    const flight = activeFlights[0];
+    const lastPoint = flight.points[flight.points.length - 1];
+
+    // Set map view to the last point with a reasonable zoom
+    map.setView([lastPoint.lat, lastPoint.lon], 12);
+
+    // Add a marker for tracking if it doesn't exist
+    if (!trackMarker) {
+        trackMarker = L.marker([lastPoint.lat, lastPoint.lon], {
+            icon: L.divIcon({
+                className: 'track-marker',
+                html: '<div class="track-marker-inner"></div>',
+                iconSize: [20, 20]
+            })
+        }).addTo(map);
+
+        trackCircle = L.circle([lastPoint.lat, lastPoint.lon], {
+            color: '#ff0000',
+            fillColor: '#ff0000',
+            fillOpacity: 0.1,
+            radius: 500
+        }).addTo(map);
+    } else {
+        trackMarker.setLatLng([lastPoint.lat, lastPoint.lon]);
+        trackCircle.setLatLng([lastPoint.lat, lastPoint.lon]);
+    }
+}
+
+// Fit map to show all active flights
+function fitAllActiveFlights() {
+    const bounds = [];
+
+    flightData.forEach(flight => {
+        if (!activeSondes.has(flight.id)) return;
+        bounds.push(...flight.points.map(p => [p.lat, p.lon]));
+    });
+
+    if (bounds.length > 0) {
+        map.fitBounds(bounds, {
+            padding: [20, 20]
+        });
+    }
+
+    // Remove tracking markers if they exist
+    if (trackMarker) {
+        map.removeLayer(trackMarker);
+        map.removeLayer(trackCircle);
+        trackMarker = null;
+        trackCircle = null;
+    }
 }
 
 // Generate consistent color for each sonde based on its name
@@ -139,6 +224,9 @@ function createCharts() {
                         color: '#a0a0a0'
                     }
                 }
+            },
+            animation: {
+                duration: 0 // Disable animation to prevent jumping
             }
         }
     });
@@ -195,6 +283,9 @@ function createCharts() {
                         color: '#a0a0a0'
                     }
                 }
+            },
+            animation: {
+                duration: 0 // Disable animation to prevent jumping
             }
         }
     });
@@ -251,6 +342,9 @@ function createCharts() {
                         color: '#a0a0a0'
                     }
                 }
+            },
+            animation: {
+                duration: 0 // Disable animation to prevent jumping
             }
         }
     });
@@ -258,7 +352,7 @@ function createCharts() {
     // Direction chart
     const directionCtx = document.getElementById('directionChart').getContext('2d');
     directionChart = new Chart(directionCtx, {
-        type: 'scatter',
+        type: 'line',
         data: {
             datasets: []
         },
@@ -310,6 +404,9 @@ function createCharts() {
                         color: '#a0a0a0'
                     }
                 }
+            },
+            animation: {
+                duration: 0 // Disable animation to prevent jumping
             }
         }
     });
@@ -326,6 +423,11 @@ function setupEventListeners() {
     // Map style buttons
     document.querySelectorAll('.map-style-btn').forEach(btn => {
         btn.addEventListener('click', () => setMapStyle(btn.dataset.style));
+    });
+
+    // Map mode buttons
+    document.querySelectorAll('.map-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => setMapMode(btn.dataset.mode));
     });
 }
 
@@ -457,6 +559,13 @@ async function processDirectory(isRefresh = false) {
             updateMap();
             updateCharts();
             updateStats();
+
+            // Adjust map view based on current mode
+            if (mapMode === 'track') {
+                trackActiveSondes();
+            } else if (mapMode === 'full') {
+                fitAllActiveFlights();
+            }
         }
     } catch (error) {
         console.error('Error processing directory:', error);
@@ -505,6 +614,32 @@ function parseLogFile(content, filename) {
 
     if (points.length === 0) return null;
 
+    // Calculate additional statistics
+    let distanceTraveled = 0;
+    let currentSpeed = 0;
+    let currentAltitude = 0;
+    let ascentRate = 0;
+
+    if (points.length >= 2) {
+        // Calculate distance traveled using Haversine formula
+        for (let i = 1; i < points.length; i++) {
+            const p1 = points[i - 1];
+            const p2 = points[i];
+            distanceTraveled += calculateDistance(p1.lat, p1.lon, p2.lat, p2.lon);
+        }
+
+        // Calculate current speed from last two points
+        const lastPoint = points[points.length - 1];
+        const secondLastPoint = points[points.length - 2];
+        const timeDiff = (lastPoint.timestamp - secondLastPoint.timestamp) / 1000; // seconds
+        const dist = calculateDistance(secondLastPoint.lat, secondLastPoint.lon, lastPoint.lat, lastPoint.lon);
+        currentSpeed = timeDiff > 0 ? (dist / timeDiff) * 3.6 : 0; // km/h
+
+        // Current altitude and ascent rate
+        currentAltitude = lastPoint.altitude;
+        ascentRate = lastPoint.verticalVelocity;
+    }
+
     // Generate a consistent color for this sonde based on its name
     const color = generateColorFromName(name);
 
@@ -516,8 +651,29 @@ function parseLogFile(content, filename) {
         maxAltitude: Math.max(...points.map(p => p.altitude)),
         maxSpeed: Math.max(...points.map(p => p.horizontalVelocity)),
         duration: (points[points.length - 1].timestamp - points[0].timestamp) / 1000 / 60, // minutes
-        color: color
+        color: color,
+        distanceTraveled: distanceTraveled,
+        currentSpeed: currentSpeed,
+        currentAltitude: currentAltitude,
+        ascentRate: ascentRate
     };
+}
+
+// Calculate distance between two coordinates using Haversine formula
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Earth's radius in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in km
+}
+
+function deg2rad(deg) {
+    return deg * (Math.PI / 180);
 }
 
 // Generate consistent ID based on filename instead of random
@@ -579,13 +735,25 @@ function toggleSonde(id) {
     updateSondesList();
     updateMap();
     updateCharts();
+    updateStats();
+
+    // Adjust map view based on current mode
+    if (mapMode === 'track') {
+        trackActiveSondes();
+    } else if (mapMode === 'full') {
+        fitAllActiveFlights();
+    }
 }
 
 // Update map with flight paths
 function updateMap() {
-    // Clear existing layers except base layer
+    // Clear existing layers except base layer and tracking markers
     map.eachLayer(layer => {
         if (layer instanceof L.CircleMarker || layer instanceof L.Polyline) {
+            // Don't remove tracking markers if we're in track mode
+            if (mapMode === 'track' && (layer === trackMarker || layer === trackCircle)) {
+                return;
+            }
             map.removeLayer(layer);
         }
     });
@@ -656,8 +824,8 @@ function updateMap() {
         `);
     });
 
-    // Fit map to show all active flights
-    if (bounds.length > 0) {
+    // Fit map to show all active flights if in full mode
+    if (bounds.length > 0 && mapMode === 'full') {
         map.fitBounds(bounds, {
             padding: [20, 20]
         });
@@ -703,8 +871,8 @@ function updateCharts() {
             backgroundColor: flight.color + '40',
             borderWidth: 2,
             fill: false,
-            pointRadius: 1,
-            pointHoverRadius: 4
+            pointRadius: 0,
+            tension: 0.1
         });
 
         speedDatasets.push({
@@ -714,8 +882,8 @@ function updateCharts() {
             backgroundColor: flight.color + '40',
             borderWidth: 2,
             fill: false,
-            pointRadius: 1,
-            pointHoverRadius: 4
+            pointRadius: 0,
+            tension: 0.1
         });
 
         velocityDatasets.push({
@@ -725,8 +893,8 @@ function updateCharts() {
             backgroundColor: flight.color + '40',
             borderWidth: 2,
             fill: false,
-            pointRadius: 1,
-            pointHoverRadius: 4
+            pointRadius: 0,
+            tension: 0.1
         });
 
         directionDatasets.push({
@@ -735,43 +903,71 @@ function updateCharts() {
             borderColor: flight.color,
             backgroundColor: flight.color + '40',
             borderWidth: 2,
-            pointRadius: 2,
-            pointHoverRadius: 5
+            fill: false,
+            pointRadius: 0,
+            tension: 0.1
         });
     });
 
+    // Update charts with new data
     altitudeChart.data.datasets = altDatasets;
     speedChart.data.datasets = speedDatasets;
     velocityChart.data.datasets = velocityDatasets;
     directionChart.data.datasets = directionDatasets;
 
-    altitudeChart.update();
-    speedChart.update();
-    velocityChart.update();
-    directionChart.update();
+    // Update scales to fit data
+    if (altDatasets.length > 0) {
+        altitudeChart.update('none');
+    }
+    if (speedDatasets.length > 0) {
+        speedChart.update('none');
+    }
+    if (velocityDatasets.length > 0) {
+        velocityChart.update('none');
+    }
+    if (directionDatasets.length > 0) {
+        directionChart.update('none');
+    }
 }
 
-// Update statistics
+// Update statistics panel
 function updateStats() {
     const activeFlights = flightData.filter(f => activeSondes.has(f.id));
-    const total = activeFlights.length;
 
-    if (total === 0) {
+    if (activeFlights.length === 0) {
         document.getElementById('totalFlights').textContent = '0';
         document.getElementById('maxAltitude').textContent = '0 m';
         document.getElementById('avgDuration').textContent = '0 min';
         document.getElementById('maxSpeed').textContent = '0 km/h';
+        document.getElementById('currentAltitude').textContent = '0 m';
+        document.getElementById('currentSpeed').textContent = '0 km/h';
+        document.getElementById('ascentRate').textContent = '0 m/s';
+        document.getElementById('distanceTraveled').textContent = '0 km';
         return;
     }
 
-    const maxAlt = Math.max(...activeFlights.map(f => f.maxAltitude));
+    // Calculate statistics
+    const totalFlights = activeFlights.length;
+    const maxAltitude = Math.max(...activeFlights.map(f => f.maxAltitude));
+    const avgDuration = activeFlights.reduce((sum, f) => sum + f.duration, 0) / totalFlights;
     const maxSpeed = Math.max(...activeFlights.map(f => f.maxSpeed));
-    const avgDuration = activeFlights.reduce((sum, f) => sum + f.duration, 0) / total;
 
-    document.getElementById('totalFlights').textContent = total;
-    document.getElementById('maxAltitude').textContent = maxAlt.toFixed(1) + ' m';
-    document.getElementById('avgDuration').textContent = avgDuration.toFixed(1) + ' min';
-    document.getElementById('maxSpeed').textContent = maxSpeed.toFixed(1) + ' km/h';
+    // For current statistics, use the latest flight if there are multiple
+    const latestFlight = activeFlights[activeFlights.length - 1];
+    const currentAltitude = latestFlight.currentAltitude;
+    const currentSpeed = latestFlight.currentSpeed;
+    const ascentRate = latestFlight.ascentRate;
+    const distanceTraveled = latestFlight.distanceTraveled;
+
+    // Update DOM elements
+    document.getElementById('totalFlights').textContent = totalFlights;
+    document.getElementById('maxAltitude').textContent = `${maxAltitude.toFixed(1)} m`;
+    document.getElementById('avgDuration').textContent = `${avgDuration.toFixed(1)} min`;
+    document.getElementById('maxSpeed').textContent = `${maxSpeed.toFixed(1)} km/h`;
+    document.getElementById('currentAltitude').textContent = `${currentAltitude.toFixed(1)} m`;
+    document.getElementById('currentSpeed').textContent = `${currentSpeed.toFixed(1)} km/h`;
+    document.getElementById('ascentRate').textContent = `${ascentRate.toFixed(1)} m/s`;
+    document.getElementById('distanceTraveled').textContent = `${distanceTraveled.toFixed(1)} km`;
 }
 
 // Initialize the application when the DOM is loaded

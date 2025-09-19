@@ -49,6 +49,14 @@
               <button class="map-style-btn" data-style="satellite">Satellite</button>
             </div>
           </div>
+          <div class="map-controls">
+            <h3>Map Mode</h3>
+            <div class="map-mode-buttons">
+              <button class="map-mode-btn" data-mode="free">Free</button>
+              <button class="map-mode-btn" data-mode="track">Track</button>
+              <button class="map-mode-btn active" data-mode="full">Full</button>
+            </div>
+          </div>
           <div class="sondes-list">
             <h3>Loaded Sondes</h3>
             <div id="sondesContainer" class="sondes-container">
@@ -74,6 +82,22 @@
             <div class="stat-item">
               <div class="stat-label">Max Speed</div>
               <div class="stat-value" id="maxSpeed">0 km/h</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Current Altitude</div>
+              <div class="stat-value" id="currentAltitude">0 m</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Current Speed</div>
+              <div class="stat-value" id="currentSpeed">0 km/h</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Ascent Rate</div>
+              <div class="stat-value" id="ascentRate">0 m/s</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Distance Traveled</div>
+              <div class="stat-value" id="distanceTraveled">0 km</div>
             </div>
           </div>
         </div>
